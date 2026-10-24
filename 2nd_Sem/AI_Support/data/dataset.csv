@@ -1,0 +1,30 @@
+query,intent
+Hello,greeting
+Hi,greeting
+Hey,greeting
+Good morning,greeting
+Good evening,greeting
+How are you,greeting
+
+I want a refund,refund
+Refund my money,refund
+I need my money back,refund
+I want refund urgently,refund
+Cancel my order and refund,refund
+
+My product is broken,complaint
+This is the worst service,complaint
+Very bad experience,complaint
+I am not happy with the product,complaint
+Your service is terrible,complaint
+
+How does this work,inquiry
+Tell me about your services,inquiry
+Can you explain this,inquiry
+I need information about your product,inquiry
+
+App not working,technical
+Website is slow,technical
+App is crashing,technical
+I cannot login,technical
+System error occurred,technical

@@ -1,0 +1,988 @@
+"""
+Banking System — Flask (Single File, No Templates Needed)
+Experiment 3: Inheritance & Polymorphism (CO3)
+
+Run:
+    pip install flask
+    python app.py
+    Open: http://localhost:5000
+"""
+
+from flask import Flask, jsonify, request, Response
+from abc import ABC, abstractmethod
+from datetime import datetime
+
+app = Flask(__name__)
+
+# ─────────────────────────────────────────────────────
+# PERSON 1 — OOP Backend
+# ─────────────────────────────────────────────────────
+
+class BankAccount(ABC):
+    _counter = 1000
+
+    def __init__(self, owner: str, balance: float = 0.0):
+        BankAccount._counter += 1
+        self.account_no  = str(BankAccount._counter)
+        self.owner       = owner
+        self._balance    = balance
+        self.transactions: list[dict] = []
+        self._log("Account opened", balance)
+
+    def _log(self, action: str, amount: float = 0, success: bool = True):
+        self.transactions.append({
+            "time":    datetime.now().strftime("%d %b %Y  %I:%M %p"),
+            "action":  action,
+            "amount":  amount,
+            "balance": self._balance,
+            "success": success,
+        })
+
+    def deposit(self, amount: float) -> tuple[bool, str]:
+        if amount <= 0:
+            return False, "Deposit amount must be positive."
+        self._balance += amount
+        self._log("Deposit", amount)
+        return True, f"\u20b9{amount:,.2f} deposited successfully."
+
+    @abstractmethod
+    def withdraw(self, amount: float) -> tuple[bool, str]: pass
+
+    @abstractmethod
+    def account_type(self) -> str: pass
+
+    @abstractmethod
+    def limit_label(self) -> str: pass
+
+    def to_dict(self) -> dict:
+        return {
+            "account_no":   self.account_no,
+            "owner":        self.owner,
+            "type":         self.account_type(),
+            "balance":      round(self._balance, 2),
+            "limit_label":  self.limit_label(),
+            "transactions": list(reversed(self.transactions)),
+        }
+
+
+class SavingsAccount(BankAccount):
+    MIN_BALANCE = 1000.0
+
+    def account_type(self): return "Savings"
+    def limit_label(self):  return f"Min Balance \u20b9{self.MIN_BALANCE:,.0f}"
+
+    def withdraw(self, amount: float) -> tuple[bool, str]:
+        if amount <= 0:
+            return False, "Amount must be positive."
+        if self._balance - amount < self.MIN_BALANCE:
+            avail = max(0, self._balance - self.MIN_BALANCE)
+            self._log("Withdraw (failed)", amount, False)
+            return False, f"Min balance \u20b9{self.MIN_BALANCE:,.0f} required. Max withdrawable: \u20b9{avail:,.2f}"
+        self._balance -= amount
+        self._log("Withdraw", amount)
+        return True, f"\u20b9{amount:,.2f} withdrawn successfully."
+
+
+class CheckingAccount(BankAccount):
+    OVERDRAFT = 500.0
+
+    def account_type(self): return "Checking"
+    def limit_label(self):  return f"Overdraft \u20b9{self.OVERDRAFT:,.0f}"
+
+    def withdraw(self, amount: float) -> tuple[bool, str]:
+        if amount <= 0:
+            return False, "Amount must be positive."
+        if self._balance - amount < -self.OVERDRAFT:
+            avail = self._balance + self.OVERDRAFT
+            self._log("Withdraw (failed)", amount, False)
+            return False, f"Overdraft limit \u20b9{self.OVERDRAFT:,.0f} exceeded. Max withdrawable: \u20b9{avail:,.2f}"
+        self._balance -= amount
+        self._log("Withdraw", amount)
+        return True, f"\u20b9{amount:,.2f} withdrawn successfully."
+
+
+# ─────────────────────────────────────────────────────
+# Polymorphic store
+# ─────────────────────────────────────────────────────
+accounts: list[BankAccount] = [
+    SavingsAccount("Alice (Demo)", 5000),
+    CheckingAccount("Bob (Demo)",  300),
+]
+
+def find(acc_no: str) -> BankAccount | None:
+    return next((a for a in accounts if a.account_no == acc_no), None)
+
+
+
+# ─────────────────────────────────────────────────────
+# HTML — embedded directly (no templates folder needed)
+# ─────────────────────────────────────────────────────
+HTML = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NexBank — Banking System</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:       #080B12;
+    --surface:  #0D1120;
+    --card:     #111827;
+    --card2:    #161D2E;
+    --border:   rgba(255,255,255,0.07);
+    --border2:  rgba(255,255,255,0.13);
+    --accent:   #3B82F6;
+    --accent-g: #60A5FA;
+    --green:    #10B981;
+    --green-g:  #34D399;
+    --amber:    #F59E0B;
+    --red:      #EF4444;
+    --text:     #F1F5F9;
+    --muted:    #64748B;
+    --muted2:   #94A3B8;
+    --sav:      #10B981;
+    --chk:      #3B82F6;
+    --mono:     'DM Mono', monospace;
+    --sans:     'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* BG grid */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(8,11,18,0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2.5rem;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 64px;
+  }
+  .logo {
+    font-family: var(--sans); font-size: 1.35rem; font-weight: 800;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, var(--accent-g), var(--green-g));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .header-badge {
+    font-family: var(--mono); font-size: 0.68rem;
+    color: var(--muted); border: 1px solid var(--border2);
+    padding: 4px 12px; border-radius: 999px;
+  }
+
+  /* ── LAYOUT ── */
+  .main {
+    position: relative; z-index: 1;
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 0;
+    height: calc(100vh - 64px);
+  }
+
+  /* ── LEFT SIDEBAR ── */
+  .sidebar {
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-header {
+    padding: 1.5rem 1.5rem 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-header h2 {
+    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.12em;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 1rem;
+  }
+
+  /* Create form */
+  .create-form { display: flex; flex-direction: column; gap: 10px; }
+  .field-group { display: flex; flex-direction: column; gap: 4px; }
+  .field-label {
+    font-family: var(--mono); font-size: 0.68rem;
+    color: var(--muted); letter-spacing: 0.05em;
+  }
+  input[type="text"], input[type="number"] {
+    background: var(--card);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--mono); font-size: 0.85rem;
+    padding: 9px 12px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    width: 100%;
+  }
+  input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+  }
+
+  /* Type toggle */
+  .type-toggle {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .type-btn {
+    padding: 8px; border-radius: 8px;
+    border: 1px solid var(--border2);
+    background: var(--card);
+    color: var(--muted2);
+    font-family: var(--sans); font-size: 0.78rem; font-weight: 600;
+    cursor: pointer; transition: all 0.18s;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .type-btn.active-sav {
+    background: rgba(16,185,129,0.12);
+    border-color: var(--sav);
+    color: var(--sav);
+  }
+  .type-btn.active-chk {
+    background: rgba(59,130,246,0.12);
+    border-color: var(--chk);
+    color: var(--chk);
+  }
+  .type-btn:hover:not(.active-sav):not(.active-chk) {
+    border-color: var(--border2); background: var(--card2);
+  }
+
+  /* Buttons */
+  .btn {
+    padding: 10px 18px; border-radius: 9px;
+    border: none; cursor: pointer;
+    font-family: var(--sans); font-size: 0.82rem; font-weight: 600;
+    letter-spacing: 0.01em;
+    transition: all 0.18s; display: flex; align-items: center;
+    justify-content: center; gap: 7px;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #1D4ED8);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(59,130,246,0.25);
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(59,130,246,0.35); }
+  .btn-primary:active { transform: scale(0.98); }
+
+  .btn-green {
+    background: linear-gradient(135deg, var(--green), #059669);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(16,185,129,0.25);
+  }
+  .btn-green:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(16,185,129,0.35); }
+  .btn-green:active { transform: scale(0.98); }
+
+  .btn-amber {
+    background: linear-gradient(135deg, var(--amber), #D97706);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(245,158,11,0.25);
+  }
+  .btn-amber:hover { transform: translateY(-1px); }
+  .btn-amber:active { transform: scale(0.98); }
+
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--muted2);
+  }
+  .btn-ghost:hover { background: var(--card2); color: var(--text); border-color: var(--border2); }
+
+  .btn-poly {
+    background: linear-gradient(135deg, #7C3AED, #4338CA);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(124,58,237,0.3);
+    width: 100%;
+  }
+  .btn-poly:hover { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(124,58,237,0.45); }
+
+  /* Account list */
+  .acc-list-wrap {
+    flex: 1; overflow-y: auto; padding: 0.75rem;
+  }
+  .acc-list-wrap::-webkit-scrollbar { width: 4px; }
+  .acc-list-wrap::-webkit-scrollbar-track { background: transparent; }
+  .acc-list-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+  .acc-card {
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.18s;
+    animation: slideIn 0.3s ease both;
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-12px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  .acc-card:hover { border-color: var(--border2); background: var(--card2); }
+  .acc-card.selected {
+    border-color: var(--accent);
+    background: rgba(59,130,246,0.07);
+    box-shadow: 0 0 0 1px rgba(59,130,246,0.2);
+  }
+  .acc-card.selected-sav {
+    border-color: var(--sav);
+    background: rgba(16,185,129,0.07);
+    box-shadow: 0 0 0 1px rgba(16,185,129,0.2);
+  }
+  .acc-card-top {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .acc-owner { font-size: 0.88rem; font-weight: 600; }
+  .acc-type-pill {
+    font-family: var(--mono); font-size: 0.65rem;
+    padding: 2px 9px; border-radius: 999px; font-weight: 500;
+  }
+  .pill-sav { background: rgba(16,185,129,0.15); color: var(--sav); border: 1px solid rgba(16,185,129,0.3); }
+  .pill-chk { background: rgba(59,130,246,0.15); color: var(--chk); border: 1px solid rgba(59,130,246,0.3); }
+  .acc-balance {
+    font-family: var(--mono); font-size: 1.05rem; font-weight: 500;
+    color: var(--text);
+  }
+  .acc-balance.negative { color: var(--red); }
+  .acc-no {
+    font-family: var(--mono); font-size: 0.65rem; color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* ── RIGHT PANEL ── */
+  .panel {
+    display: flex; flex-direction: column;
+    overflow: hidden; background: var(--bg);
+  }
+
+  /* Hero balance */
+  .balance-hero {
+    padding: 2rem 2.5rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(59,130,246,0.04) 0%, transparent 100%);
+    position: relative; overflow: hidden;
+  }
+  .balance-hero::after {
+    content: '';
+    position: absolute; top: -40px; right: -40px;
+    width: 180px; height: 180px;
+    background: radial-gradient(circle, rgba(59,130,246,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .balance-hero-top {
+    display: flex; align-items: flex-start;
+    justify-content: space-between; margin-bottom: 0.75rem;
+  }
+  .selected-name {
+    font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em;
+    color: var(--text);
+  }
+  .selected-meta {
+    font-family: var(--mono); font-size: 0.72rem;
+    color: var(--muted); margin-top: 3px;
+  }
+  .balance-display {
+    font-family: var(--mono); font-size: 3rem; font-weight: 500;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #fff 30%, var(--accent-g));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    transition: all 0.4s;
+  }
+  .balance-display.negative {
+    background: linear-gradient(135deg, var(--red), #FCA5A5);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .balance-label {
+    font-family: var(--mono); font-size: 0.7rem;
+    color: var(--muted); letter-spacing: 0.08em; margin-bottom: 4px;
+  }
+  .limit-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 0.68rem;
+    padding: 3px 10px; border-radius: 999px;
+    margin-top: 8px;
+  }
+  .limit-sav { background: rgba(16,185,129,0.12); color: var(--sav); border: 1px solid rgba(16,185,129,0.25); }
+  .limit-chk { background: rgba(59,130,246,0.12); color: var(--chk); border: 1px solid rgba(59,130,246,0.25); }
+
+  /* OPS + HISTORY */
+  .content-area {
+    flex: 1; display: grid;
+    grid-template-columns: 300px 1fr;
+    overflow: hidden;
+  }
+
+  /* Operations */
+  .ops-panel {
+    border-right: 1px solid var(--border);
+    padding: 1.5rem;
+    display: flex; flex-direction: column; gap: 1.25rem;
+    overflow-y: auto;
+  }
+  .ops-section-title {
+    font-size: 0.68rem; font-weight: 600; letter-spacing: 0.12em;
+    color: var(--muted); text-transform: uppercase;
+  }
+  .amount-input-wrap { position: relative; }
+  .currency-prefix {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    font-family: var(--mono); color: var(--muted2); font-size: 0.9rem;
+  }
+  .amount-input-wrap input {
+    padding-left: 28px; font-size: 1.05rem;
+  }
+
+  /* Toast */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 999;
+    font-family: var(--mono); font-size: 0.8rem;
+    padding: 12px 20px; border-radius: 10px;
+    display: flex; align-items: center; gap: 10px;
+    min-width: 260px; max-width: 360px;
+    transform: translateY(80px); opacity: 0;
+    transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.success { background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); color: var(--green-g); }
+  #toast.error   { background: rgba(239,68,68,0.15);  border: 1px solid rgba(239,68,68,0.4);  color: #FCA5A5; }
+
+  /* History */
+  .history-panel { overflow-y: auto; padding: 1.5rem; }
+  .history-panel::-webkit-scrollbar { width: 4px; }
+  .history-panel::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+  .history-title {
+    font-size: 0.68rem; font-weight: 600; letter-spacing: 0.12em;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 1rem;
+  }
+  .txn-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    animation: fadeUp 0.3s ease both;
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .txn-icon {
+    width: 34px; height: 34px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.9rem; flex-shrink: 0;
+  }
+  .txn-icon.dep  { background: rgba(16,185,129,0.12); color: var(--green); }
+  .txn-icon.with { background: rgba(245,158,11,0.12); color: var(--amber); }
+  .txn-icon.fail { background: rgba(239,68,68,0.12);  color: var(--red); }
+  .txn-icon.open { background: rgba(59,130,246,0.12); color: var(--accent); }
+  .txn-body { flex: 1; }
+  .txn-action { font-size: 0.82rem; font-weight: 600; }
+  .txn-time   { font-family: var(--mono); font-size: 0.65rem; color: var(--muted); margin-top: 2px; }
+  .txn-amount { font-family: var(--mono); font-size: 0.88rem; font-weight: 500; }
+  .txn-amount.dep  { color: var(--green); }
+  .txn-amount.with { color: var(--amber); }
+  .txn-amount.fail { color: var(--red); }
+  .txn-bal { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); margin-top: 1px; }
+
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; height: 200px;
+    color: var(--muted); font-size: 0.82rem;
+    font-family: var(--mono); gap: 8px;
+  }
+  .empty-icon { font-size: 2rem; opacity: 0.4; }
+
+  /* Poly demo modal */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(6px);
+    display: none; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--border2);
+    border-radius: 16px;
+    padding: 2rem;
+    max-width: 520px; width: 90%;
+    animation: popIn 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(0.9); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  .modal h3 {
+    font-size: 1.1rem; font-weight: 700; margin-bottom: 6px;
+    background: linear-gradient(135deg, #A78BFA, #60A5FA);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .modal-desc {
+    font-family: var(--mono); font-size: 0.72rem;
+    color: var(--muted); margin-bottom: 1.25rem; line-height: 1.6;
+  }
+  .poly-result {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px;
+    margin-bottom: 8px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .poly-owner { font-size: 0.85rem; font-weight: 600; }
+  .poly-type  { font-family: var(--mono); font-size: 0.68rem; color: var(--muted); }
+  .poly-msg   { font-family: var(--mono); font-size: 0.72rem; color: var(--muted2); margin-top: 3px; }
+  .poly-bal   { font-family: var(--mono); font-size: 1rem; font-weight: 500; color: var(--green-g); }
+
+  /* Divider */
+  .divider { width: 100%; height: 1px; background: var(--border); }
+
+  /* No account placeholder */
+  .no-acc-placeholder {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; flex: 1;
+    color: var(--muted); font-family: var(--mono); font-size: 0.8rem;
+    gap: 12px; padding: 2rem;
+    text-align: center;
+  }
+  .no-acc-icon { font-size: 3rem; opacity: 0.3; }
+
+  @media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; }
+    .content-area { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">◈ NexBank</div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="header-badge">Experiment 3 · Inheritance & Polymorphism</span>
+    <span class="header-badge" id="acc-count-badge">0 Accounts</span>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- LEFT SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h2>Open New Account</h2>
+      <div class="create-form">
+        <div class="field-group">
+          <span class="field-label">OWNER NAME</span>
+          <input type="text" id="new-name" placeholder="e.g. Rahul Sharma"/>
+        </div>
+        <div class="field-group">
+          <span class="field-label">INITIAL BALANCE (₹)</span>
+          <input type="number" id="new-balance" placeholder="0.00" min="0"/>
+        </div>
+        <div class="field-group">
+          <span class="field-label">ACCOUNT TYPE</span>
+          <div class="type-toggle">
+            <button class="type-btn active-sav" id="btn-sav" onclick="setType('Savings')">
+              <span>🌿</span> Savings
+            </button>
+            <button class="type-btn" id="btn-chk" onclick="setType('Checking')">
+              <span>💳</span> Checking
+            </button>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="createAccount()" style="width:100%;margin-top:4px">
+          ＋ &nbsp;Create Account
+        </button>
+      </div>
+    </div>
+
+    <!-- Account list -->
+    <div class="acc-list-wrap" id="acc-list">
+      <div class="empty-state">
+        <span class="empty-icon">🏦</span>
+        Loading accounts…
+      </div>
+    </div>
+
+    <!-- Poly demo -->
+    <div style="padding:0.85rem;border-top:1px solid var(--border)">
+      <button class="btn btn-poly" onclick="runPolyDemo()">
+        ⚡ &nbsp;Run Polymorphism Demo
+      </button>
+    </div>
+  </aside>
+
+  <!-- RIGHT PANEL -->
+  <div class="panel" id="right-panel">
+    <div class="no-acc-placeholder" id="no-acc-msg">
+      <div class="no-acc-icon">←</div>
+      <div>Select an account to get started</div>
+    </div>
+
+    <div id="acc-detail" style="display:none;flex-direction:column;height:100%;">
+
+      <!-- Balance hero -->
+      <div class="balance-hero">
+        <div class="balance-hero-top">
+          <div>
+            <div class="selected-name" id="d-name">—</div>
+            <div class="selected-meta" id="d-meta">—</div>
+          </div>
+          <div id="d-limit-badge" class="limit-badge limit-sav">—</div>
+        </div>
+        <div class="balance-label">CURRENT BALANCE</div>
+        <div class="balance-display" id="d-balance">₹ 0.00</div>
+      </div>
+
+      <!-- Content area -->
+      <div class="content-area">
+
+        <!-- Operations -->
+        <div class="ops-panel">
+          <div class="ops-section-title">Transaction</div>
+          <div class="field-group">
+            <span class="field-label">AMOUNT (₹)</span>
+            <div class="amount-input-wrap">
+              <span class="currency-prefix">₹</span>
+              <input type="number" id="txn-amount" placeholder="0.00" min="0"/>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="btn btn-green" onclick="doDeposit()">
+              ↓ &nbsp;Deposit
+            </button>
+            <button class="btn btn-amber" onclick="doWithdraw()">
+              ↑ &nbsp;Withdraw
+            </button>
+          </div>
+
+          <div class="divider"></div>
+
+          <!-- Quick amounts -->
+          <div>
+            <span class="field-label" style="display:block;margin-bottom:8px">QUICK AMOUNTS</span>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <button class="btn btn-ghost" style="font-size:0.78rem;padding:8px" onclick="setAmt(500)">₹500</button>
+              <button class="btn btn-ghost" style="font-size:0.78rem;padding:8px" onclick="setAmt(1000)">₹1,000</button>
+              <button class="btn btn-ghost" style="font-size:0.78rem;padding:8px" onclick="setAmt(2000)">₹2,000</button>
+              <button class="btn btn-ghost" style="font-size:0.78rem;padding:8px" onclick="setAmt(5000)">₹5,000</button>
+            </div>
+          </div>
+
+          <!-- OOP Info box -->
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:auto">
+            <div style="font-size:0.68rem;font-weight:600;letter-spacing:0.1em;color:var(--muted);margin-bottom:6px">OOP CONCEPT</div>
+            <div id="oop-info" style="font-family:var(--mono);font-size:0.7rem;color:var(--muted2);line-height:1.6">—</div>
+          </div>
+        </div>
+
+        <!-- Transaction History -->
+        <div class="history-panel" id="history-panel">
+          <div class="history-title">Transaction History</div>
+          <div id="txn-list">
+            <div class="empty-state"><span class="empty-icon">📋</span>No transactions yet</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Polymorphism Modal -->
+<div class="modal-overlay" id="poly-modal" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3>⚡ Polymorphism Demo</h3>
+    <div class="modal-desc">
+      Iterating list[BankAccount] — deposit ₹500 &amp; withdraw ₹200 called on each.<br/>
+      Runtime dispatch: each account's own withdraw() runs automatically.
+    </div>
+    <div id="poly-results"></div>
+    <div style="margin-top:1.25rem;display:flex;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="document.getElementById('poly-modal').classList.remove('open')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+  let accounts = [];
+  let selectedAccNo = null;
+  let selectedType  = 'Savings';
+
+  // ── INIT ──
+  async function init() {
+    const data = await api('/api/accounts');
+    accounts = data;
+    renderList();
+    updateBadge();
+    if (accounts.length) selectAcc(accounts[0].account_no);
+  }
+
+  // ── API ──
+  async function api(url, method='GET', body=null) {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch(url, opts);
+    return r.json();
+  }
+
+  // ── TYPE TOGGLE ──
+  function setType(t) {
+    selectedType = t;
+    document.getElementById('btn-sav').className = 'type-btn' + (t==='Savings' ? ' active-sav' : '');
+    document.getElementById('btn-chk').className = 'type-btn' + (t==='Checking' ? ' active-chk' : '');
+  }
+
+  // ── CREATE ACCOUNT ──
+  async function createAccount() {
+    const name    = document.getElementById('new-name').value.trim();
+    const balance = parseFloat(document.getElementById('new-balance').value) || 0;
+    if (!name) { toast('Enter owner name', false); return; }
+
+    const res = await api('/api/accounts', 'POST', { owner: name, balance, type: selectedType });
+    if (!res.ok) { toast(res.msg, false); return; }
+    accounts.push(res.account);
+    document.getElementById('new-name').value    = '';
+    document.getElementById('new-balance').value = '';
+    renderList();
+    updateBadge();
+    selectAcc(res.account.account_no);
+    toast(`Account #${res.account.account_no} created!`, true);
+  }
+
+  // ── RENDER LIST ──
+  function renderList() {
+    const el = document.getElementById('acc-list');
+    if (!accounts.length) {
+      el.innerHTML = `<div class="empty-state"><span class="empty-icon">🏦</span>No accounts yet</div>`;
+      return;
+    }
+    el.innerHTML = accounts.map(a => {
+      const isSav  = a.type === 'Savings';
+      const selCls = a.account_no === selectedAccNo ? (isSav ? 'selected-sav' : 'selected') : '';
+      const neg    = a.balance < 0 ? 'negative' : '';
+      return `
+        <div class="acc-card ${selCls}" onclick="selectAcc('${a.account_no}')">
+          <div class="acc-card-top">
+            <span class="acc-owner">${a.owner}</span>
+            <span class="acc-type-pill ${isSav ? 'pill-sav' : 'pill-chk'}">${a.type}</span>
+          </div>
+          <div class="acc-balance ${neg}">₹ ${a.balance.toLocaleString('en-IN', {minimumFractionDigits:2})}</div>
+          <div class="acc-no">#${a.account_no}</div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── SELECT ACCOUNT ──
+  function selectAcc(accNo) {
+    selectedAccNo = accNo;
+    const acc = accounts.find(a => a.account_no === accNo);
+    if (!acc) return;
+    renderList();
+
+    document.getElementById('no-acc-msg').style.display = 'none';
+    const detail = document.getElementById('acc-detail');
+    detail.style.display = 'flex';
+
+    const isSav = acc.type === 'Savings';
+    document.getElementById('d-name').textContent    = acc.owner;
+    document.getElementById('d-meta').textContent    = `Account #${acc.account_no} · ${acc.type} Account`;
+
+    const lb = document.getElementById('d-limit-badge');
+    lb.textContent = acc.limit_label;
+    lb.className   = 'limit-badge ' + (isSav ? 'limit-sav' : 'limit-chk');
+
+    renderBalance(acc.balance);
+    renderHistory(acc.transactions);
+
+    const oopEl = document.getElementById('oop-info');
+    oopEl.textContent = isSav
+      ? `SavingsAccount.withdraw() enforces MIN_BALANCE = ₹1,000. Overrides abstract BankAccount.withdraw().`
+      : `CheckingAccount.withdraw() allows OVERDRAFT up to ₹500. Overrides abstract BankAccount.withdraw().`;
+  }
+
+  function renderBalance(bal) {
+    const el = document.getElementById('d-balance');
+    el.textContent = `₹ ${Math.abs(bal).toLocaleString('en-IN', {minimumFractionDigits:2})}${bal<0?' (overdraft)':''}`;
+    el.className   = 'balance-display' + (bal < 0 ? ' negative' : '');
+  }
+
+  function renderHistory(txns) {
+    const el = document.getElementById('txn-list');
+    if (!txns.length) {
+      el.innerHTML = `<div class="empty-state"><span class="empty-icon">📋</span>No transactions yet</div>`;
+      return;
+    }
+    el.innerHTML = txns.map((t,i) => {
+      const isOpen = t.action.includes('opened');
+      const isDep  = t.action.includes('Deposit');
+      const isFail = !t.success;
+      let cls  = isFail ? 'fail' : isOpen ? 'open' : isDep ? 'dep' : 'with';
+      let icon = isFail ? '✕' : isOpen ? '🏦' : isDep ? '↓' : '↑';
+      return `
+        <div class="txn-item" style="animation-delay:${i*0.04}s">
+          <div class="txn-icon ${cls}">${icon}</div>
+          <div class="txn-body">
+            <div class="txn-action">${t.action}</div>
+            <div class="txn-time">${t.time}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="txn-amount ${cls}">${t.amount > 0 ? '₹'+t.amount.toLocaleString('en-IN',{minimumFractionDigits:2}) : '—'}</div>
+            <div class="txn-bal">Bal: ₹${t.balance.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── DEPOSIT / WITHDRAW ──
+  async function doDeposit() {
+    if (!selectedAccNo) { toast('Select an account first', false); return; }
+    const amount = parseFloat(document.getElementById('txn-amount').value);
+    if (!amount) { toast('Enter an amount', false); return; }
+    const res = await api(`/api/accounts/${selectedAccNo}/deposit`, 'POST', { amount });
+    handleTxnRes(res);
+  }
+
+  async function doWithdraw() {
+    if (!selectedAccNo) { toast('Select an account first', false); return; }
+    const amount = parseFloat(document.getElementById('txn-amount').value);
+    if (!amount) { toast('Enter an amount', false); return; }
+    const res = await api(`/api/accounts/${selectedAccNo}/withdraw`, 'POST', { amount });
+    handleTxnRes(res);
+  }
+
+  function handleTxnRes(res) {
+    toast(res.msg, res.ok);
+    if (res.account) {
+      const idx = accounts.findIndex(a => a.account_no === res.account.account_no);
+      if (idx !== -1) accounts[idx] = res.account;
+      renderBalance(res.account.balance);
+      renderHistory(res.account.transactions);
+      renderList();
+    }
+    document.getElementById('txn-amount').value = '';
+  }
+
+  function setAmt(v) { document.getElementById('txn-amount').value = v; }
+
+  // ── POLY DEMO ──
+  async function runPolyDemo() {
+    const res = await api('/api/poly-demo', 'POST');
+    accounts = res.accounts;
+    renderList();
+    if (selectedAccNo) {
+      const acc = accounts.find(a => a.account_no === selectedAccNo);
+      if (acc) { renderBalance(acc.balance); renderHistory(acc.transactions); }
+    }
+    updateBadge();
+
+    document.getElementById('poly-results').innerHTML = res.results.map(r => `
+      <div class="poly-result">
+        <div>
+          <div class="poly-owner">${r.owner}</div>
+          <div class="poly-type">${r.type} · #${r.account_no}</div>
+          <div class="poly-msg">${r.msg}</div>
+        </div>
+        <div class="poly-bal">₹${r.balance.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
+      </div>`).join('');
+    document.getElementById('poly-modal').classList.add('open');
+  }
+
+  function closeModal(e) {
+    document.getElementById('poly-modal').classList.remove('open');
+  }
+
+  // ── TOAST ──
+  let toastTimer;
+  function toast(msg, ok) {
+    const el = document.getElementById('toast');
+    el.textContent = (ok ? '✓  ' : '✕  ') + msg;
+    el.className   = 'show ' + (ok ? 'success' : 'error');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.className = '', 3200);
+  }
+
+  function updateBadge() {
+    document.getElementById('acc-count-badge').textContent =
+      `${accounts.length} Account${accounts.length !== 1 ? 's' : ''}`;
+  }
+
+  init();
+</script>
+</body>
+</html>
+"""
+
+# ─────────────────────────────────────────────────────
+# PERSON 2 — Flask Routes
+# ─────────────────────────────────────────────────────
+
+@app.route("/")
+def index():
+    return Response(HTML, mimetype="text/html")
+
+@app.route("/api/accounts", methods=["GET"])
+def get_accounts():
+    return jsonify([a.to_dict() for a in accounts])
+
+@app.route("/api/accounts", methods=["POST"])
+def create_account():
+    data    = request.json
+    name    = (data.get("owner") or "").strip()
+    balance = float(data.get("balance", 0))
+    kind    = data.get("type", "Savings")
+    if not name:
+        return jsonify({"ok": False, "msg": "Owner name is required."}), 400
+    if kind == "Savings" and balance < SavingsAccount.MIN_BALANCE:
+        return jsonify({"ok": False, "msg": f"Savings requires min \u20b9{SavingsAccount.MIN_BALANCE:,.0f} to open."}), 400
+    acc = SavingsAccount(name, balance) if kind == "Savings" else CheckingAccount(name, balance)
+    accounts.append(acc)
+    return jsonify({"ok": True, "account": acc.to_dict()})
+
+@app.route("/api/accounts/<acc_no>/deposit", methods=["POST"])
+def deposit(acc_no):
+    acc = find(acc_no)
+    if not acc: return jsonify({"ok": False, "msg": "Account not found."}), 404
+    ok, msg = acc.deposit(float(request.json.get("amount", 0)))
+    return jsonify({"ok": ok, "msg": msg, "account": acc.to_dict()})
+
+@app.route("/api/accounts/<acc_no>/withdraw", methods=["POST"])
+def withdraw(acc_no):
+    acc = find(acc_no)
+    if not acc: return jsonify({"ok": False, "msg": "Account not found."}), 404
+    ok, msg = acc.withdraw(float(request.json.get("amount", 0)))
+    return jsonify({"ok": ok, "msg": msg, "account": acc.to_dict()})
+
+@app.route("/api/poly-demo", methods=["POST"])
+def poly_demo():
+    results = []
+    for acc in accounts:
+        acc.deposit(500)
+        ok, msg = acc.withdraw(200)
+        results.append({"account_no": acc.account_no, "owner": acc.owner,
+                        "type": acc.account_type(), "msg": msg, "balance": round(acc._balance, 2)})
+    return jsonify({"ok": True, "results": results, "accounts": [a.to_dict() for a in accounts]})
+
+if __name__ == "__main__":
+    print("\n  NexBank running at: http://localhost:5000\n")
+    app.run(debug=True, port=5000)
