@@ -1,0 +1,6 @@
+,Accuracy,Macro-F1
+TF-IDF + Logistic Regression,0.7244,0.7263
+TF-IDF + Naive Bayes,0.72,0.7229
+LSTM,0.6944,0.6953
+Bi-LSTM,0.6839,0.6824
+GRU,0.6861,0.6871
