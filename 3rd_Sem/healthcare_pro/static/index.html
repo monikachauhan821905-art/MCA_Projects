@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CareDesk - Healthcare Management</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b2f33'/%3E%3Cpath d='M16 8v16M8 16h16' stroke='white' stroke-width='3.4' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="side" id="side"></aside>
+    <div class="main">
+      <header class="top">
+        <button class="btn icon ghost menu-btn" id="menu" aria-label="Open menu"></button>
+        <div class="grow">
+          <h1 id="title">Dashboard</h1>
+          <div class="sub" id="subtitle"></div>
+        </div>
+        <div id="top-actions" style="display:flex;gap:8px;align-items:center"></div>
+      </header>
+      <main id="view"><div class="loader">Loading...</div></main>
+    </div>
+  </div>
+  <div class="toasts" id="toasts"></div>
+  <script src="/static/vendor/chart.umd.js"></script>
+  <script src="/static/core.js"></script>
+  <script src="/static/pages.js"></script>
+</body>
+</html>
