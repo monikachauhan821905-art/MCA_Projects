@@ -1,0 +1,40 @@
+{
+  "holdout_months": 12,
+  "holdout_mae": 122601.41,
+  "holdout_rmse": 147050.31,
+  "holdout_mape_percent": 1582.99,
+  "time_series_cv": [
+    {
+      "fold": 1,
+      "train_end": "2022-01-01",
+      "validation_start": "2022-02-01",
+      "validation_end": "2022-07-01",
+      "mae": 50256.70775191457,
+      "rmse": 55516.82048498038
+    },
+    {
+      "fold": 2,
+      "train_end": "2022-07-01",
+      "validation_start": "2022-08-01",
+      "validation_end": "2023-01-01",
+      "mae": 2068.811442352346,
+      "rmse": 2560.4638344857603
+    },
+    {
+      "fold": 3,
+      "train_end": "2023-01-01",
+      "validation_start": "2023-02-01",
+      "validation_end": "2023-07-01",
+      "mae": 28275.615636174993,
+      "rmse": 31243.01423019527
+    },
+    {
+      "fold": 4,
+      "train_end": "2023-07-01",
+      "validation_start": "2023-08-01",
+      "validation_end": "2024-01-01",
+      "mae": 2448.6893458048385,
+      "rmse": 3005.6551816379774
+    }
+  ]
+}

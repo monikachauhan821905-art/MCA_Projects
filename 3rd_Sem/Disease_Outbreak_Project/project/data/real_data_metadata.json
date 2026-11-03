@@ -1,0 +1,14 @@
+{
+  "disease_source": "OpenDengue",
+  "disease_source_doi": "10.6084/m9.figshare.24259573",
+  "weather_source": "Open-Meteo Historical Weather API",
+  "country": "India",
+  "geocoded_name": "India",
+  "latitude": 22.0,
+  "longitude": 79.0,
+  "start_date": "1991-01-01",
+  "end_date": "2025-01-01",
+  "rows": 45,
+  "note": "Reported surveillance data; completeness and case definitions vary by location and time.",
+  "opendengue_file": "Temporal_extract_V1_3.zip"
+}
